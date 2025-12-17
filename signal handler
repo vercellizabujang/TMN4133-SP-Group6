@@ -1,0 +1,9 @@
+// --- Signal Handler ---
+void handleSignal(int sig) {
+    if (sig == SIGINT) {
+        printf("\nExiting... Saving log.\n");
+        // You call your log function one last time before quitting
+        writeLog("Session ended (Signal SIGINT received).");
+        exit(0);
+    }
+}
