@@ -1,0 +1,6 @@
+fp = fopen("/proc/stat", "r");
+    // This check is your responsibility to explain
+    if (!fp) { 
+        perror("Error reading /proc/stat"); 
+        return; 
+    }
