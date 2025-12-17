@@ -38,107 +38,67 @@ void writeToLog(char *message)
 	close(file_descriptor);
 }
 
-// CPU USAGE
-// Reads stat of CPU
+// --- 1. CPU Usage (reads /proc/stat) ---
 void getCPUUsage() {
-	char file_content[MAX_READ_SIZE];
+    FILE *fp;
+    char buffer[BUFFER_SIZE];
+    long double a[4], b[4], loadavg;
     
-	// Variables to hold the numbers from the file
-	unsigned long long user, nice, system, idle, iowait, irq, softirq, steal;
-
-	// 1. Open the system file that stores CPU data
-	int fd = open("/proc/stat", O_RDONLY);
-	if (fd == -1) {
-    	perror("Error opening /proc/stat");
-    	return;
-	}
-
-	// 2. Read the file content into our variable 'file_content'
-	int bytes_read = read(fd, file_content, MAX_READ_SIZE - 1);
-	close(fd); // We are done reading, so close it.
-
-	if (bytes_read == -1) {
-    	perror("Error reading CPU data");
-    	return;
-	}
+    // Read 1
+    fp = fopen("/proc/stat", "r");
+    if (!fp) { perror("Error reading /proc/stat"); return; }
+    fscanf(fp, "%*s %Lf %Lf %Lf %Lf", &a[0], &a[1], &a[2], &a[3]);
+    fclose(fp);
     
- 
-	sscanf(file_content, "cpu %llu %llu %llu %llu %llu %llu %llu %llu",
-       	&user, &nice, &system, &idle, &iowait, &irq, &softirq, &steal);
-
-	//calculate total work time vs idle time
-	unsigned long long total_time = user + nice + system + idle + iowait + irq + softirq + steal;
+    sleep(1); // Wait 1 second to calculate delta
     
-	// Idle time is doing nothing
-	unsigned long long idle_time = idle + iowait;
+    // Read 2
+    fp = fopen("/proc/stat", "r");
+    if (!fp) { perror("Error reading /proc/stat"); return; }
+    fscanf(fp, "%*s %Lf %Lf %Lf %Lf", &b[0], &b[1], &b[2], &b[3]);
+    fclose(fp);
 
-	//calculate percentage
-   
-	unsigned long long time_working = total_time - idle_time;
-	double cpu_percentage = ((double)time_working / total_time) * 100.0;
-
-	//print cpu usage
-	printf("CPU Usage: %.2f%%\n", cpu_percentage);
-   
-
-	//to save result in log file
-	char log_message[100];
-	sprintf(log_message, "Checked CPU Usage: %.2f%%", cpu_percentage);
-	writeToLog(log_message);
+    // Calculate Load
+    loadavg = ((b[0]+b[1]+b[2]) - (a[0]+a[1]+a[2])) / 
+              ((b[0]+b[1]+b[2]+b[3]) - (a[0]+a[1]+a[2]+a[3]));
+    
+    float cpu_percent = loadavg * 100;
+    
+    printf("\n--- CPU Usage ---\n");
+    printf("CPU Usage: %.2f%%\n", cpu_percent);
+    
+    char logMsg[100];
+    snprintf(logMsg, sizeof(logMsg), "Checked CPU Usage: %.2f%%", cpu_percent);
+    writeLog(logMsg);
 }
 
-//MEMORY USAGE
-// Reads RAM usage
+// --- 2. Memory Usage (reads /proc/meminfo) ---
 void getMemoryUsage() {
-	char file_content[MAX_READ_SIZE];
-	long total_memory = 0;
-	long free_memory = 0;
-
-	// open the system file that stores Memory data
-	int fd = open("/proc/meminfo", O_RDONLY);
-	if (fd == -1) {
-    	perror("Error opening /proc/meminfo");
-    	return;
-	}
-
-	//read the file
-	int bytes_read = read(fd, file_content, MAX_READ_SIZE - 1);
-	close(fd);
-
-	if (bytes_read == -1) {
-    	perror("Error reading Memory data");
-    	return;
-	}
-	file_content[bytes_read] = '\0'; //make sure the string ends properly
-
-   
-	//look for the text Memtotal and Memfree in file
-	char *p_total = strstr(file_content, "MemTotal:");
-	char *p_free  = strstr(file_content, "MemFree:");
-
-	//if text found, value will be read
-	if (p_total != NULL) {
-    	sscanf(p_total, "MemTotal: %ld", &total_memory);
-	}
-	if (p_free != NULL) {
-    	sscanf(p_free, "MemFree: %ld", &free_memory);
-	}
-
-	//calc used memory
-	long used_memory = total_memory - free_memory;
-
-	//print result to screen (/1024 to convert to MB)
-	printf("\n--- MEMORY STATUS ---\n");
-	printf("Total Memory: %ld MB\n", total_memory / 1024);
-	printf("Used Memory : %ld MB\n", used_memory / 1024);
-	printf("Free Memory : %ld MB\n", free_memory / 1024);
-	printf("---------------------\n");
-
-	//to save result in log file
-	char log_message[100];
-	sprintf(log_message, "Checked Memory: Used %ld MB / Free %ld MB",
-        	used_memory / 1024, free_memory / 1024);
-	writeToLog(log_message);
+    FILE *fp = fopen("/proc/meminfo", "r");
+    if (!fp) { perror("Error reading /proc/meminfo"); return; }
+    
+    char buffer[BUFFER_SIZE];
+    long total_mem = 0, free_mem = 0;
+    
+    while (fgets(buffer, sizeof(buffer), fp)) {
+        if (strncmp(buffer, "MemTotal:", 9) == 0) {
+            sscanf(buffer, "MemTotal: %ld kB", &total_mem);
+        }
+        if (strncmp(buffer, "MemFree:", 8) == 0) {
+            sscanf(buffer, "MemFree: %ld kB", &free_mem);
+        }
+    }
+    fclose(fp);
+    
+    long used_mem = total_mem - free_mem;
+    printf("\n--- Memory Usage ---\n");
+    printf("Total: %ld kB\n", total_mem);
+    printf("Used:  %ld kB\n", used_mem);
+    printf("Free:  %ld kB\n", free_mem);
+    
+    char logMsg[100];
+    snprintf(logMsg, sizeof(logMsg), "Checked Memory: Used %ld kB / Total %ld kB", used_mem, total_mem);
+    writeLog(logMsg);
 }
 
 static volatile sig_atomic_t keep_running = 1;
