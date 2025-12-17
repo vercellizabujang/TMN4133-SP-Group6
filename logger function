@@ -1,0 +1,19 @@
+// --- Helper: Write to Log with Timestamp ---
+void writeLog(const char *message) {
+    // You are opening the file in "append" mode so data is added to the end
+    FILE *fp = fopen(LOG_FILE, "a");
+    if (fp == NULL) {
+        perror("Error opening log file"); // Your Error Handling here
+        return;
+    }
+    
+    // You are capturing the current system time
+    time_t now;
+    time(&now);
+    char *date_str = ctime(&now);
+    date_str[strlen(date_str) - 1] = '\0'; // Remove newline to make the log clean
+    
+    // Writing the formatted string: [Date] Message
+    fprintf(fp, "[%s] %s\n", date_str, message);
+    fclose(fp);
+}
